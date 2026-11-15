@@ -1,0 +1,45 @@
+.mm-auth-page{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 50% 0%,#3b2d5b,#0c0f19 55%);color:#f4f5fb;font-family:Inter,system-ui,sans-serif}
+.mm-auth-box{width:min(100%,430px);background:#151a29;border:1px solid #343950;border-radius:19px;padding:32px;box-shadow:0 25px 85px #0006}
+.mm-auth-logo{width:48px;height:48px;display:grid;place-items:center;border-radius:13px;background:#7563db;margin-bottom:16px}
+.mm-auth-box h1{font-size:25px;margin:0 0 8px}.mm-auth-box h2{font-size:19px;margin:24px 0 16px}.mm-auth-box p{font-size:12px;color:#b1b8cd;line-height:1.6}
+.mm-auth-box form{display:grid;gap:15px}.mm-auth-box label{display:grid;gap:8px;color:#d6d9e7;font-size:12px}
+.mm-auth-box label svg{display:inline;vertical-align:middle;margin-right:5px}
+.mm-auth-box input{width:100%;padding:12px;border:1px solid #3b4158;border-radius:10px;background:#0f1421;color:white;outline:0}
+.mm-auth-box input:focus{border-color:#9b87ff}
+.mm-auth-primary,.mm-auth-secondary{width:100%;padding:13px;margin-top:9px;border-radius:11px;font-weight:700;font-size:13px;cursor:pointer}
+.mm-auth-primary{border:0;background:linear-gradient(110deg,#8d78f3,#6b59d1);color:white}
+.mm-auth-secondary{border:1px solid #454b60;background:#23283a;color:#fff}
+.mm-auth-link{display:block;margin:13px auto 0;border:0;background:transparent;color:#b7a8ff;font-size:12px;cursor:pointer}
+.mm-auth-info{border:1px solid #62518b;border-radius:9px;padding:11px;color:#e7dfff!important}
+.mm-auth-error,.mm-sync-error{color:#ff9696!important}
+.mm-auth-note{margin-top:24px!important;border-top:1px solid #30364b;padding-top:14px}
+.mm-cloud-toolbar{position:fixed;top:4px;right:8px;z-index:1000;display:flex;align-items:center;gap:12px;padding:7px 11px;background:#141929;border:1px solid #3b4158;border-radius:10px;color:#c0c5d7;font:11px Inter,system-ui,sans-serif;max-width:calc(100vw - 15px)}
+.mm-cloud-toolbar span{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mm-cloud-toolbar button{display:flex;align-items:center;gap:6px;border:1px solid #48415e;border-radius:8px;background:#252039;color:#eee;padding:6px 8px;cursor:pointer;font-size:11px}
+.mm-cloud-error{position:fixed;right:12px;top:60px;z-index:1000;border-radius:8px;background:#4a2026;padding:9px;font-size:12px;color:#fff}
+@media(max-width:700px){.mm-cloud-toolbar{position:relative;top:auto;right:auto;justify-content:space-around;border-radius:0;flex-wrap:wrap}.mm-cloud-toolbar span{max-width:125px}.mm-auth-box{padding:24px}}
+
+/* Ventana de configuración de la cuenta */
+.mm-account-backdrop { position:fixed; inset:0; z-index:1500; display:grid; place-items:center; padding:18px; background:#060814cf; backdrop-filter:blur(6px); }
+.mm-account-dialog { width:min(100%,460px); max-height:92vh; overflow:auto; background:#171c2c; color:#f4f5fb; border:1px solid #41465f; border-radius:18px; box-shadow:0 24px 90px #0009; font-family:Inter,system-ui,sans-serif; }
+.mm-account-dialog-head { display:flex; justify-content:space-between; align-items:center; gap:15px; padding:23px; border-bottom:1px solid #30364a; }
+.mm-account-heading-group { display:flex; align-items:center; gap:13px; min-width:0; }
+.mm-account-dialog-icon { display:grid; place-items:center; flex-shrink:0; width:43px; height:43px; background:#7663da; border-radius:12px; }
+.mm-account-dialog h2 { margin:0; font-size:19px; }
+.mm-account-dialog-head p { margin:5px 0 0; color:#abb2c7; font-size:12px; overflow-wrap:anywhere; }
+.mm-account-close { display:grid; place-items:center; width:34px; height:34px; border:0; background:#242b3d; color:#cbd0e0; border-radius:8px; cursor:pointer; }
+.mm-account-dialog-body { padding:23px; }
+.mm-account-dialog-body h3 { display:flex; align-items:center; gap:9px; font-size:15px; margin:22px 0 17px; }
+.mm-account-sync { display:inline-block; font-size:11px; color:#6be0c7; padding:9px 11px; background:#39c6bd14; border-radius:9px; margin:0; }
+.mm-account-password-form { display:grid; gap:15px; }
+.mm-account-password-form label { display:flex; flex-direction:column; gap:8px; font-size:12px; color:#cbd1e2; }
+.mm-account-password-form input { width:100%; min-width:0; padding:12px 13px; background:#101525; border:1px solid #3b4158; color:white; border-radius:10px; outline:none; }
+.mm-account-password-form input:focus { border-color:#9b87ff; }
+.mm-account-password-control { display:flex; align-items:center; position:relative; }
+.mm-account-password-control input { padding-right:45px; }
+.mm-account-password-control button { position:absolute; right:5px; display:grid; place-items:center; border:0; background:transparent; color:#b1b8cb; padding:9px; cursor:pointer; }
+.mm-account-password-form .mm-auth-primary { margin-top:3px; }
+.mm-account-notice { padding:11px; color:#d6cfff; background:#9b87ff18; border-radius:8px; font-size:12px; line-height:1.5; }
+.mm-account-divider { height:1px; background:#30364a; margin:24px 0 19px; }
+.mm-account-signout { display:flex; justify-content:center; align-items:center; gap:10px; width:100%; padding:12px; border:1px solid #9a545c; border-radius:10px; background:#732c361a; color:#ffaaaa; font-size:13px; font-weight:700; cursor:pointer; }
+.mm-account-signout:hover { background:#732c3635; }
+@media(max-width:600px){ .mm-account-dialog-head,.mm-account-dialog-body{padding:18px;} }

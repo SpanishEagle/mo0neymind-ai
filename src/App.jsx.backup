@@ -1,0 +1,1250 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Wallet, TrendingUp, TrendingDown, PiggyBank, Plus, Sparkles,
+  LayoutDashboard, ChartNoAxesCombined, Target, ArrowUpRight,
+  ArrowDownRight, X, CircleDollarSign, CalendarDays, Trash2,
+  CheckCircle2, Coins, House, BriefcaseBusiness, ReceiptText, LineChart, Bot, CalendarCheck, MessageCircle, Send, RotateCcw, Square
+} from "lucide-react";
+import {
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
+} from "recharts";
+import "./App.css";
+
+const initialTransactions = [
+  { id: 1, name: "Dinero inicial", category: "Otros", type: "income", amount: 300, date: new Date().toISOString() },
+  { id: 2, name: "Comida", category: "Comida", type: "expense", amount: 25, date: new Date().toISOString() },
+  { id: 3, name: "Transporte", category: "Transporte", type: "expense", amount: 12, date: new Date().toISOString() },
+  { id: 4, name: "Ocio", category: "Ocio", type: "expense", amount: 18, date: new Date().toISOString() }
+];
+
+const initialGoals = [
+  { id: 1, name: "Mi próximo objetivo", target: 500, saved: 25, color: "#9b87ff" },
+  { id: 2, name: "Fondo personal", target: 300, saved: 15, color: "#39c6bd" }
+];
+
+const EXPENSE_CATEGORIES = ["Comida", "Transporte", "Ocio", "Compras", "Estudios", "Gastos mensuales", "Otros"];
+const INCOME_CATEGORIES = ["Otros", "Trabajo", "Regalo", "Mesada", "Venta"];
+
+// Si defines VITE_AI_ENDPOINT en .env, el chat usa una IA real; si no, responde en modo local.
+const AI_ENDPOINT = import.meta.env.VITE_AI_ENDPOINT;
+
+const euro = value => new Intl.NumberFormat("es-ES", {
+  style: "currency", currency: "EUR"
+}).format(value);
+
+function readStorage(key, fallback) {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function App() {
+  const [transactions, setTransactions] = useState(() =>
+    readStorage("mm_transactions", initialTransactions)
+  );
+  const [goals, setGoals] = useState(() =>
+    readStorage("mm_goals", initialGoals)
+  );
+
+  const [page, setPage] = useState("Inicio");
+  const [showTransaction, setShowTransaction] = useState(false);
+  const [showGoal, setShowGoal] = useState(false);
+  const [pendingIncome, setPendingIncome] = useState(null);
+  const [showSavePrompt, setShowSavePrompt] = useState(false);
+  const [saveAmount, setSaveAmount] = useState("");
+  const [selectedGoal, setSelectedGoal] = useState("");
+
+  const [form, setForm] = useState({
+    name: "", amount: "", type: "expense", category: "Comida", billId: ""
+  });
+  const [goalForm, setGoalForm] = useState({ name: "", target: "" });
+  const [salary, setSalary] = useState(() => readStorage("mm_salary", 2000));
+  const [bills, setBills] = useState(() => readStorage("mm_bills", [
+    { id: 1, name: "Alquiler", category: "Vivienda", amount: 750, paid: false },
+    { id: 2, name: "Agua y luz", category: "Suministros", amount: 100, paid: false },
+    { id: 3, name: "Internet y teléfono", category: "Servicios", amount: 50, paid: false },
+    { id: 4, name: "Comida", category: "Alimentación", amount: 250, paid: false },
+    { id: 5, name: "Transporte", category: "Transporte", amount: 100, paid: false }
+  ]));
+  const [billForm, setBillForm] = useState({ name: "", category: "Vivienda", amount: "" });
+  const [investmentAmount, setInvestmentAmount] = useState("");
+  const [selectedFund, setSelectedFund] = useState("global");
+  const [investments, setInvestments] = useState(() => readStorage("mm_investments", []));
+
+  useEffect(() => {
+    localStorage.setItem("mm_transactions", JSON.stringify(transactions));
+  }, [transactions]);
+
+  useEffect(() => {
+    localStorage.setItem("mm_goals", JSON.stringify(goals));
+  }, [goals]);
+
+  useEffect(() => {
+    localStorage.setItem("mm_salary", JSON.stringify(salary));
+  }, [salary]);
+
+  useEffect(() => {
+    localStorage.setItem("mm_bills", JSON.stringify(bills));
+  }, [bills]);
+
+  useEffect(() => {
+    localStorage.setItem("mm_investments", JSON.stringify(investments));
+  }, [investments]);
+
+  const income = transactions
+    .filter(t => t.type === "income")
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const expenses = transactions
+    .filter(t => t.type === "expense")
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const totalSaved = goals.reduce((sum, goal) => sum + goal.saved, 0);
+  const totalMoney = income - expenses;
+  const investedTotal = investments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const balance = totalMoney - totalSaved - investedTotal;
+  const monthlyBillsTotal = bills.reduce((sum, bill) => sum + Number(bill.amount || 0), 0);
+  const paidBillsTotal = bills.filter(bill => bill.paid).reduce((sum, bill) => sum + Number(bill.amount || 0), 0);
+  const unpaidBillsTotal = monthlyBillsTotal - paidBillsTotal;
+  const salaryRemaining = Number(salary || 0) - monthlyBillsTotal;
+
+  const funds = [
+    { id: "global", name: "Fondo global diversificado", risk: "Variable", description: "Ejemplo educativo de exposición amplia a mercados globales.", rate: 0.05 },
+    { id: "bonds", name: "Fondo de renta fija", risk: "Moderado", description: "Ejemplo educativo centrado en deuda; también puede perder valor.", rate: 0.02 },
+    { id: "sustainable", name: "Fondo sostenible", risk: "Variable", description: "Ejemplo educativo con criterios ambientales y sociales.", rate: 0.04 }
+  ];
+  const addBill = e => {
+    e.preventDefault();
+    const amount = Number(billForm.amount);
+    if (!billForm.name.trim() || !Number.isFinite(amount) || amount <= 0) return;
+    setBills(prev => [...prev, { id: Date.now(), ...billForm, amount, paid: false }]);
+    setBillForm({ name: "", category: "Vivienda", amount: "" });
+  };
+  const toggleBillPaid = id => setBills(prev => prev.map(bill => bill.id === id ? { ...bill, paid: !bill.paid } : bill));
+  const deleteBill = id => setBills(prev => prev.filter(bill => bill.id !== id));
+  const addInvestment = e => {
+    e.preventDefault();
+    const amount = Number(investmentAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > Math.max(0, balance)) return;
+    const fund = funds.find(item => item.id === selectedFund);
+    if (!fund) return;
+    setInvestments(prev => [...prev, { id: Date.now(), fundId: fund.id, fundName: fund.name, amount, date: new Date().toISOString(), illustrativeRate: fund.rate }]);
+    setInvestmentAmount("");
+  };
+
+  const addTransaction = e => {
+    e.preventDefault();
+    const amount = Number(form.amount);
+    if (!amount || amount <= 0 || !form.name.trim()) return;
+
+    // Si el gasto está vinculado a un gasto mensual, lo marcamos como pagado
+    const linkedBillId = form.type === "expense" && form.category === "Gastos mensuales" && form.billId
+      ? Number(form.billId)
+      : null;
+
+    const transaction = {
+      id: Date.now(),
+      name: form.name.trim(),
+      category: form.category,
+      type: form.type,
+      amount,
+      date: new Date().toISOString(),
+      ...(linkedBillId ? { billId: linkedBillId } : {})
+    };
+
+    setTransactions(prev => [transaction, ...prev]);
+    if (linkedBillId) {
+      setBills(prev => prev.map(bill => bill.id === linkedBillId ? { ...bill, paid: true } : bill));
+    }
+    setShowTransaction(false);
+    setForm({ name: "", amount: "", type: "expense", category: "Comida", billId: "" });
+
+    if (transaction.type === "income") {
+      setPendingIncome(transaction);
+      setSaveAmount("");
+      setSelectedGoal(goals[0]?.id?.toString() || "");
+      setShowSavePrompt(true);
+    }
+  };
+
+  const confirmSaving = () => {
+    const amount = Number(saveAmount);
+    if (amount > 0 && amount <= pendingIncome.amount && selectedGoal) {
+      setGoals(prev => prev.map(goal =>
+        goal.id === Number(selectedGoal)
+          ? { ...goal, saved: goal.saved + amount }
+          : goal
+      ));
+    }
+    setShowSavePrompt(false);
+    setPendingIncome(null);
+  };
+
+  const addGoal = e => {
+    e.preventDefault();
+    const target = Number(goalForm.target);
+    if (!goalForm.name.trim() || target <= 0) return;
+
+    setGoals(prev => [...prev, {
+      id: Date.now(),
+      name: goalForm.name.trim(),
+      target,
+      saved: 0,
+      color: ["#9b87ff", "#39c6bd", "#ffb86b", "#ed82b5", "#6e9cff"][prev.length % 5]
+    }]);
+
+    setGoalForm({ name: "", target: "" });
+    setShowGoal(false);
+  };
+
+  const addToGoal = id => {
+    const goal = goals.find(g => g.id === id);
+    if (!goal) return;
+
+    const raw = prompt(`¿Cuánto quieres añadir a "${goal.name}"?`);
+    if (raw === null) return;
+
+    const amount = Number(raw);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert("Introduce una cantidad válida.");
+      return;
+    }
+    if (amount > balance) {
+      alert("No tienes suficiente dinero disponible para apartar esa cantidad.");
+      return;
+    }
+
+    setGoals(prev => prev.map(g =>
+      g.id === id ? { ...g, saved: g.saved + amount } : g
+    ));
+  };
+
+  const deleteTransaction = id => {
+    const removed = transactions.find(t => t.id === id);
+    // Si el movimiento estaba vinculado a un gasto mensual, vuelve a quedar pendiente
+    if (removed?.billId) {
+      setBills(prev => prev.map(bill => bill.id === removed.billId ? { ...bill, paid: false } : bill));
+    }
+    setTransactions(prev => prev.filter(t => t.id !== id));
+  };
+
+  const pendingBills = bills.filter(bill => !bill.paid);
+
+  const selectMonthlyBill = billId => {
+    const bill = bills.find(b => String(b.id) === billId);
+    setForm(prev => bill
+      ? { ...prev, billId, name: bill.name, amount: String(bill.amount) }
+      : { ...prev, billId: "" });
+  };
+
+  const weeklyData = useMemo(() => {
+    const days = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+    const today = new Date();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+
+    return days.map((day, index) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + index);
+
+      const sameDay = transactions.filter(t =>
+        new Date(t.date).toDateString() === date.toDateString()
+      );
+
+      return {
+        day,
+        ingresos: sameDay.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0),
+        gastos: sameDay.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0)
+      };
+    });
+  }, [transactions]);
+
+  const categoryData = useMemo(() => {
+    const totals = {};
+    transactions.filter(t => t.type === "expense").forEach(t => {
+      totals[t.category] = (totals[t.category] || 0) + t.amount;
+    });
+
+    const colors = ["#9b87ff", "#39c6bd", "#ffb86b", "#ed82b5", "#6e9cff", "#f07878"];
+    return Object.entries(totals).map(([name, value], i) => ({
+      name, value, color: colors[i % colors.length]
+    }));
+  }, [transactions]);
+
+  const monthlyData = useMemo(() => {
+    return Array.from({ length: 6 }, (_, i) => {
+      const date = new Date();
+      date.setMonth(date.getMonth() - (5 - i));
+      const month = date.getMonth();
+      const year = date.getFullYear();
+
+      const items = transactions.filter(t => {
+        const d = new Date(t.date);
+        return d.getMonth() === month && d.getFullYear() === year;
+      });
+
+      return {
+        month: date.toLocaleDateString("es-ES", { month: "short" }),
+        ingresos: items.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0),
+        gastos: items.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0)
+      };
+    });
+  }, [transactions]);
+
+  const aiContext = {
+    fechaHoy: new Date().toISOString().slice(0, 10),
+    paginaActual: page,
+    disponible: balance,
+    ingresos: income,
+    gastos: expenses,
+    ahorrado: totalSaved,
+    invertidoSimulado: investedTotal,
+    nomina: Number(salary || 0),
+    gastosMensualesPrevistos: monthlyBillsTotal,
+    gastosMensualesPagados: paidBillsTotal,
+    gastosMensualesPendientes: unpaidBillsTotal,
+    sobranteEstimado: salaryRemaining,
+    objetivos: goals.map(g => ({ nombre: g.name, meta: g.target, ahorrado: g.saved })),
+    gastosMensuales: bills.map(b => ({ concepto: b.name, categoria: b.category, importe: Number(b.amount), pagado: b.paid })),
+    gastosPorCategoria: categoryData.map(c => ({ categoria: c.name, total: c.value })),
+    ultimosMovimientos: transactions.slice(0, 10).map(t => ({
+      concepto: t.name, categoria: t.category, tipo: t.type === "income" ? "ingreso" : "gasto",
+      importe: t.amount, fecha: t.date.slice(0, 10)
+    }))
+  };
+
+  const nav = [
+    { name: "Inicio", icon: House },
+    { name: "Dashboard", icon: Wallet },
+    { name: "Estadísticas", icon: ChartNoAxesCombined },
+    { name: "Ahorros", icon: Target },
+    { name: "Inversiones", icon: LineChart },
+    { name: "Gastos mensuales", icon: ReceiptText },
+    { name: "Nómina", icon: BriefcaseBusiness }
+  ];
+
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-icon"><Sparkles size={22} /></div>
+          <div><strong>MoneyMind</strong><span>AI FINANCE</span></div>
+        </div>
+
+        <p className="side-label">MENÚ PRINCIPAL</p>
+        <nav>
+          {nav.map(item => (
+            <button
+              key={item.name}
+              className={`nav-item ${page === item.name ? "active" : ""}`}
+              onClick={() => setPage(item.name)}
+            >
+              <item.icon size={19} /> {item.name}
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-bottom">
+          <div className="side-tip">
+            <Sparkles size={18} />
+            <strong>Pequeños pasos,<br />grandes metas.</strong>
+            <span>Tu futuro financiero empieza hoy.</span>
+          </div>
+          <div className="profile">
+            <div className="avatar">M</div>
+            <div><strong>Mi cuenta</strong><span>Usuario</span></div>
+          </div>
+        </div>
+      </aside>
+
+      <main className="main-content">
+        <header className="topbar">
+          <div>
+            <span className="eyebrow">TU CENTRO FINANCIERO</span>
+            <h1>{page}</h1>
+          </div>
+          <div className="top-actions">
+            <span className="date-chip">
+              <CalendarDays size={15} />
+              {new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long" })}
+            </span>
+            <button className="primary-button" onClick={() => setShowTransaction(true)}>
+              <Plus size={18} /> Añadir movimiento
+            </button>
+          </div>
+        </header>
+
+        {page === "Inicio" && (
+          <>
+            <div className="welcome-banner">
+              <div>
+                <span className="eyebrow">BIENVENIDO A MONEYMIND AI</span>
+                <h2>Tu dinero, más organizado.</h2>
+                <p>Aquí tienes un resumen de tu situación financiera.</p>
+              </div>
+              <Sparkles size={45} />
+            </div>
+
+            <section className="stat-grid">
+              <StatCard icon={Wallet} label="Dinero disponible" value={euro(balance)} tone="purple" note="Fuera de tus ahorros" />
+              <StatCard icon={TrendingUp} label="Ingresos" value={euro(income)} tone="green" note="Dinero recibido" />
+              <StatCard icon={PiggyBank} label="Dinero ahorrado" value={euro(totalSaved)} tone="purple" note="En todos tus objetivos" />
+            </section>
+
+            <div className="home-grid">
+              <div className="panel home-summary">
+                <span className="eyebrow">RESUMEN FINANCIERO</span>
+                <h3>Así está tu dinero</h3>
+                <div className="home-summary-row">
+                  <span>Ingresos totales</span>
+                  <strong className="amount-positive">{euro(income)}</strong>
+                </div>
+                <div className="home-summary-row">
+                  <span>Gastos totales</span>
+                  <strong className="amount-negative">{euro(expenses)}</strong>
+                </div>
+                <div className="home-summary-row">
+                  <span>Ahorros acumulados</span>
+                  <strong>{euro(totalSaved)}</strong>
+                </div>
+                <div className="home-summary-row total-row">
+                  <span>Dinero disponible</span>
+                  <strong>{euro(balance)}</strong>
+                </div>
+              </div>
+
+              <div className="panel home-summary">
+                <span className="eyebrow">TUS OBJETIVOS</span>
+                <h3>Progreso de tus ahorros</h3>
+                {goals.length === 0 ? (
+                  <p className="home-muted">Todavía no tienes objetivos de ahorro.</p>
+                ) : goals.slice(0, 3).map(goal => (
+                  <div className="mini-goal" key={goal.id}>
+                    <div>
+                      <strong>{goal.name}</strong>
+                      <span>{euro(goal.saved)} de {euro(goal.target)}</span>
+                    </div>
+                    <div className="progress-track">
+                      <div style={{
+                        width: `${Math.min(100, goal.saved / goal.target * 100)}%`,
+                        background: goal.color
+                      }} />
+                    </div>
+                  </div>
+                ))}
+                <button className="text-button" onClick={() => setPage("Ahorros")}>
+                  Ver todos mis ahorros <ArrowUpRight size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className="section-heading">
+              <div><span className="eyebrow">ÚLTIMA ACTIVIDAD</span><h2>Tus últimos movimientos</h2></div>
+              <button className="text-button" onClick={() => setPage("Dashboard")}>
+                Ir al Dashboard <ArrowUpRight size={16} />
+              </button>
+            </div>
+            <div className="panel transaction-panel">
+              <TransactionList transactions={transactions.slice(0, 4)} onDelete={deleteTransaction} />
+            </div>
+          </>
+        )}
+
+        {page === "Dashboard" && (
+          <>
+            <section className="hero-card">
+              <div className="hero-content">
+                <span className="hero-label"><Wallet size={16} /> DINERO DISPONIBLE</span>
+                <h2>{euro(balance)}</h2>
+                <p>Este es tu dinero libre después de descontar gastos y ahorros.</p>
+                <div className="hero-stats">
+                  <div><span><TrendingUp size={15} /> Ingresos</span><strong>{euro(income)}</strong></div>
+                  <div><span><TrendingDown size={15} /> Gastos</span><strong>{euro(expenses)}</strong></div>
+                </div>
+              </div>
+              <div className="hero-orb orb-one" />
+              <div className="hero-orb orb-two" />
+              <div className="hero-decoration"><CircleDollarSign size={100} /></div>
+            </section>
+
+            <section className="stat-grid">
+              <StatCard icon={TrendingUp} label="Ingresos totales" value={euro(income)} tone="green" note="Dinero que has recibido" />
+              <StatCard icon={TrendingDown} label="Gastos totales" value={euro(expenses)} tone="red" note="Dinero que has gastado" />
+              <StatCard icon={PiggyBank} label="Total ahorrado" value={euro(totalSaved)} tone="purple" note="Dinero apartado para tus metas" />
+            </section>
+
+            <div className="section-heading">
+              <div><span className="eyebrow">TU ACTIVIDAD</span><h2>Resumen de movimientos</h2></div>
+              <button className="text-button" onClick={() => setPage("Estadísticas")}>
+                Ver estadísticas <ArrowUpRight size={16} />
+              </button>
+            </div>
+            <div className="panel transaction-panel">
+              <TransactionList transactions={transactions.slice(0, 6)} onDelete={deleteTransaction} />
+            </div>
+          </>
+        )}
+
+        {page === "Estadísticas" && (
+          <>
+            <section className="stat-grid">
+              <StatCard icon={TrendingUp} label="Ingresos" value={euro(income)} tone="green" note="Todos tus ingresos registrados" />
+              <StatCard icon={TrendingDown} label="Gastos" value={euro(expenses)} tone="red" note="Todos tus gastos registrados" />
+              <StatCard icon={Wallet} label="Balance" value={euro(totalMoney)} tone="purple" note="Ingresos menos gastos" />
+            </section>
+
+            <div className="section-heading">
+              <div><span className="eyebrow">ANÁLISIS VISUAL</span><h2>Tu dinero, bajo control</h2></div>
+            </div>
+
+            <section className="charts-grid">
+              <div className="panel chart-panel large-chart">
+                <div className="panel-heading">
+                  <div><h3>Ingresos vs. gastos</h3><p>Actividad de esta semana</p></div>
+                  <span className="chart-tag">SEMANAL</span>
+                </div>
+                <div className="chart-legend">
+                  <span><i className="legend-dot income-dot" /> Ingresos</span>
+                  <span><i className="legend-dot expense-dot" /> Gastos</span>
+                </div>
+                <ResponsiveContainer width="100%" height={280}>
+                  <AreaChart data={weeklyData} margin={{ top: 12, right: 8, left: -18, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="incomeGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#39c6bd" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#39c6bd" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#9b87ff" stopOpacity={0.28} />
+                        <stop offset="95%" stopColor="#9b87ff" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#24283a" strokeDasharray="4 5" vertical={false} />
+                    <XAxis dataKey="day" stroke="#777d96" tickLine={false} axisLine={false} />
+                    <YAxis stroke="#777d96" tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ background: "#171b2b", border: "1px solid #343950", borderRadius: 12 }} formatter={value => euro(value)} />
+                    <Area type="monotone" dataKey="ingresos" name="Ingresos" stroke="#39c6bd" strokeWidth={3} fill="url(#incomeGradient)" />
+                    <Area type="monotone" dataKey="gastos" name="Gastos" stroke="#9b87ff" strokeWidth={3} fill="url(#expenseGradient)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="panel chart-panel">
+                <div className="panel-heading">
+                  <div><h3>En qué gastas</h3><p>Distribución por categorías</p></div>
+                </div>
+                {categoryData.length ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <PieChart>
+                        <Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={62} outerRadius={88} paddingAngle={5} stroke="none">
+                          {categoryData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                        </Pie>
+                        <Tooltip contentStyle={{ background: "#171b2b", border: "1px solid #343950", borderRadius: 12 }} formatter={value => euro(value)} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="category-legend">
+                      {categoryData.map(item => (
+                        <div key={item.name}>
+                          <span><i style={{ background: item.color }} />{item.name}</span>
+                          <strong>{euro(item.value)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : <EmptyState text="Añade gastos para ver tus categorías." />}
+              </div>
+
+              <div className="panel chart-panel full-chart">
+                <div className="panel-heading">
+                  <div><h3>Evolución mensual</h3><p>Comparativa de los últimos seis meses</p></div>
+                  <span className="chart-tag">6 MESES</span>
+                </div>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={monthlyData} barGap={8} margin={{ top: 15, right: 8, left: -18, bottom: 0 }}>
+                    <CartesianGrid stroke="#24283a" strokeDasharray="4 5" vertical={false} />
+                    <XAxis dataKey="month" stroke="#777d96" tickLine={false} axisLine={false} />
+                    <YAxis stroke="#777d96" tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ background: "#171b2b", border: "1px solid #343950", borderRadius: 12 }} formatter={value => euro(value)} />
+                    <Bar dataKey="ingresos" name="Ingresos" fill="#39c6bd" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="gastos" name="Gastos" fill="#9b87ff" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+          </>
+        )}
+
+        {page === "Ahorros" && (
+          <>
+            <section className="savings-hero">
+              <div>
+                <span className="hero-label"><PiggyBank size={16} /> AHORRO GENERAL</span>
+                <h2>{euro(totalSaved)}</h2>
+                <p>La suma de todo el dinero que tienes apartado en tus objetivos.</p>
+              </div>
+              <div className="savings-hero-icon"><Coins size={66} /></div>
+            </section>
+
+            <section className="stat-grid savings-stats">
+              <StatCard icon={PiggyBank} label="Ahorro total" value={euro(totalSaved)} tone="purple" note="Todos tus objetivos juntos" />
+              <StatCard icon={Target} label="Objetivos activos" value={String(goals.length)} tone="green" note="Metas que estás intentando alcanzar" />
+              <StatCard icon={Wallet} label="Dinero disponible" value={euro(balance)} tone="purple" note="Fuera de tus ahorros" />
+            </section>
+
+            <div className="section-heading">
+              <div><span className="eyebrow">PLANES Y OBJETIVOS</span><h2>Mis objetivos de ahorro</h2></div>
+              <button className="primary-button" onClick={() => setShowGoal(true)}>
+                <Plus size={18} /> Nuevo objetivo
+              </button>
+            </div>
+
+            <section className="goals-grid">
+              {goals.map(goal => {
+                const progress = Math.min(100, goal.target ? goal.saved / goal.target * 100 : 0);
+                return (
+                  <div className="panel goal-card" key={goal.id}>
+                    <div className="goal-top">
+                      <div className="goal-icon" style={{ color: goal.color, background: `${goal.color}20` }}>
+                        <Target size={23} />
+                      </div>
+                      <span className="chart-tag">OBJETIVO</span>
+                    </div>
+                    <h3>{goal.name}</h3>
+                    <div className="goal-numbers">
+                      <strong>{euro(goal.saved)}</strong>
+                      <span>de {euro(goal.target)}</span>
+                    </div>
+                    <div className="progress-track">
+                      <div style={{ width: `${progress}%`, background: goal.color }} />
+                    </div>
+                    <div className="goal-bottom">
+                      <span>{progress.toFixed(0)}% completado</span>
+                      <span>Faltan {euro(Math.max(0, goal.target - goal.saved))}</span>
+                    </div>
+                    <button className="goal-add-button" onClick={() => addToGoal(goal.id)}>
+                      <Plus size={16} /> Añadir dinero
+                    </button>
+                  </div>
+                );
+              })}
+
+              {!goals.length && (
+                <div className="panel empty-goals">
+                  <EmptyState text="Todavía no tienes objetivos. ¡Crea el primero!" />
+                  <button className="primary-button" onClick={() => setShowGoal(true)}>Crear objetivo</button>
+                </div>
+              )}
+            </section>
+
+            <div className="panel savings-tip">
+              <Sparkles size={22} />
+              <div>
+                <strong>Consejo MoneyMind</strong>
+                <p>Ahorrar un poco de forma constante puede ayudarte a alcanzar tus objetivos. ¡Cada paso cuenta!</p>
+              </div>
+            </div>
+          </>
+        )}
+
+        {page === "Inversiones" && (
+          <>
+            <div className="welcome-banner">
+              <div>
+                <span className="eyebrow">APRENDER SOBRE INVERSIÓN</span>
+                <h2>Tu cartera de inversión simulada.</h2>
+                <p>Prueba aportaciones ficticias y entiende cómo pueden variar los fondos.</p>
+              </div>
+              <LineChart size={45} />
+            </div>
+            <section className="stat-grid">
+              <StatCard icon={Coins} label="Aportado en simulación" value={euro(investedTotal)} tone="purple" note="Dinero virtual registrado" />
+              <StatCard icon={Wallet} label="Disponible en la app" value={euro(balance)} tone="green" note="Balance menos ahorros" />
+              <StatCard icon={CalendarDays} label="Fondos de ejemplo" value="3" tone="purple" note="Perfiles educativos" />
+            </section>
+            <div className="section-heading"><div><span className="eyebrow">EXPLORAR FONDOS</span><h2>Fondos de ejemplo</h2></div></div>
+            <section className="fund-grid">
+              {funds.map(fund => (
+                <div className="panel fund-card" key={fund.id}>
+                  <div className="fund-icon"><LineChart size={22} /></div>
+                  <span className="chart-tag">SIMULACIÓN</span>
+                  <h3>{fund.name}</h3>
+                  <p>{fund.description}</p>
+                  <div className="fund-meta"><span>Riesgo ilustrativo</span><strong>{fund.risk}</strong></div>
+                  <div className="fund-meta"><span>Supuesto anual de ejemplo</span><strong>{(fund.rate * 100).toFixed(1)}%</strong></div>
+                  <button className="text-button" onClick={() => setSelectedFund(fund.id)}>Seleccionar fondo <ArrowUpRight size={16} /></button>
+                </div>
+              ))}
+            </section>
+            <div className="panel feature-panel">
+              <div className="panel-heading"><div><h3>Registrar aportación virtual</h3><p>No se mueve dinero real ni se compra ningún producto financiero.</p></div></div>
+              <form className="inline-form" onSubmit={addInvestment}>
+                <label>Fondo<select value={selectedFund} onChange={e => setSelectedFund(e.target.value)}>{funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
+                <label>Cantidad (€)<input type="number" min="0.01" step="0.01" max={Math.max(0, balance)} value={investmentAmount} onChange={e => setInvestmentAmount(e.target.value)} placeholder="Ej. 25" /></label>
+                <button className="primary-button" type="submit" disabled={!investmentAmount || Number(investmentAmount) > Math.max(0, balance)}>Añadir a simulación <Plus size={16} /></button>
+              </form>
+            </div>
+            <div className="panel feature-panel">
+              <div className="panel-heading"><div><h3>Mis aportaciones</h3><p>Registro de tus pruebas de inversión.</p></div></div>
+              {investments.length ? investments.slice().reverse().map(item => (
+                <div className="transaction-row" key={item.id}>
+                  <div className="transaction-icon income"><LineChart size={18} /></div>
+                  <div className="transaction-info"><strong>{item.fundName}</strong><span>{new Date(item.date).toLocaleDateString("es-ES")}</span></div>
+                  <strong>{euro(item.amount)}</strong>
+                  <button className="delete-button" onClick={() => setInvestments(prev => prev.filter(i => i.id !== item.id))} title="Eliminar aportación"><Trash2 size={16} /></button>
+                </div>
+              )) : <EmptyState text="Todavía no has registrado aportaciones virtuales." />}
+            </div>
+            <div className="panel ai-advice">
+              <Bot size={25} />
+              <div><strong>MoneyMind AI · Guía educativa</strong><p>Antes de invertir, aprende qué son el riesgo, la diversificación, las comisiones y el horizonte temporal. La rentabilidad no está garantizada y puedes perder dinero. Esta simulación no recomienda comprar fondos reales.</p></div>
+            </div>
+          </>
+        )}
+
+        {page === "Gastos mensuales" && (
+          <>
+            <div className="welcome-banner"><div><span className="eyebrow">CONTROL DE RECIBOS</span><h2>Todos tus gastos mensuales, organizados.</h2><p>Marca los pagos que ya has realizado y controla lo que queda pendiente.</p></div><ReceiptText size={45} /></div>
+            <section className="stat-grid">
+              <StatCard icon={ReceiptText} label="Gastos mensuales previstos" value={euro(monthlyBillsTotal)} tone="purple" note="Suma de todos los recibos" />
+              <StatCard icon={CheckCircle2} label="Ya pagado" value={euro(paidBillsTotal)} tone="green" note="Pagos marcados como realizados" />
+              <StatCard icon={CalendarDays} label="Pendiente" value={euro(unpaidBillsTotal)} tone="red" note="Pagos todavía sin marcar" />
+            </section>
+            <div className="panel feature-panel">
+              <div className="panel-heading"><div><h3>Añadir gasto mensual</h3><p>Introduce un recibo o gasto recurrente.</p></div></div>
+              <form className="inline-form" onSubmit={addBill}>
+                <label>Concepto<input required value={billForm.name} onChange={e => setBillForm({ ...billForm, name: e.target.value })} placeholder="Ej. Gimnasio" /></label>
+                <label>Categoría<select value={billForm.category} onChange={e => setBillForm({ ...billForm, category: e.target.value })}>{["Vivienda","Suministros","Servicios","Alimentación","Transporte","Salud","Otros"].map(c => <option key={c}>{c}</option>)}</select></label>
+                <label>Importe mensual (€)<input required type="number" min="0.01" step="0.01" value={billForm.amount} onChange={e => setBillForm({ ...billForm, amount: e.target.value })} placeholder="0,00" /></label>
+                <button className="primary-button" type="submit"><Plus size={16} /> Añadir gasto</button>
+              </form>
+            </div>
+            <div className="panel feature-panel">
+              <div className="panel-heading"><div><h3>Tu lista de gastos</h3><p>Los cambios se guardan automáticamente en este navegador.</p></div></div>
+              {bills.length ? bills.map(bill => (
+                <div className="bill-row" key={bill.id}>
+                  <label className="bill-check"><input type="checkbox" checked={bill.paid} onChange={() => toggleBillPaid(bill.id)} /><span><strong>{bill.name}</strong><small>{bill.category}</small></span></label>
+                  <strong>{euro(bill.amount)}</strong>
+                  <span className={bill.paid ? "bill-status paid" : "bill-status"}>{bill.paid ? "Pagado" : "Pendiente"}</span>
+                  <button className="delete-button" onClick={() => deleteBill(bill.id)} title="Eliminar gasto"><Trash2 size={16} /></button>
+                </div>
+              )) : <EmptyState text="Añade tu primer gasto mensual." />}
+            </div>
+          </>
+        )}
+
+        {page === "Nómina" && (
+          <>
+            <div className="welcome-banner"><div><span className="eyebrow">PLANIFICADOR DE INGRESOS</span><h2>Organiza tu nómina antes de gastar.</h2><p>Introduce tus ingresos y calcula cuánto queda después de los gastos mensuales.</p></div><BriefcaseBusiness size={45} /></div>
+            <div className="panel salary-panel">
+              <div><span className="eyebrow">INGRESO NETO MENSUAL</span><h3>¿Cuánto recibes al mes?</h3><p>Introduce el importe que llega a tu cuenta, después de impuestos y retenciones.</p></div>
+              <label className="salary-input"><span>Nómina (€)</span><input type="number" min="0" step="0.01" value={salary} onChange={e => setSalary(Math.max(0, Number(e.target.value)))} /></label>
+            </div>
+            <section className="stat-grid">
+              <StatCard icon={Wallet} label="Nómina mensual" value={euro(Number(salary || 0))} tone="purple" note="Ingreso neto introducido" />
+              <StatCard icon={ReceiptText} label="Gastos previstos" value={euro(monthlyBillsTotal)} tone="red" note="Todos tus gastos mensuales" />
+              <StatCard icon={Sparkles} label="Sobrante estimado" value={euro(salaryRemaining)} tone={salaryRemaining >= 0 ? "green" : "red"} note="Nómina menos gastos previstos" />
+            </section>
+            <div className="panel feature-panel">
+              <div className="panel-heading"><div><h3>Resumen de pagos</h3><p>El cálculo incluye tanto los gastos pagados como los pendientes.</p></div><button className="text-button" onClick={() => setPage("Gastos mensuales")}>Gestionar gastos <ArrowUpRight size={16} /></button></div>
+              {bills.map(bill => <div className="bill-row" key={bill.id}><span><strong>{bill.name}</strong><small>{bill.paid ? "Pagado" : "Pendiente"}</small></span><strong>{euro(bill.amount)}</strong><span className={bill.paid ? "bill-status paid" : "bill-status"}>{bill.paid ? "Pagado" : "Pendiente"}</span></div>)}
+            </div>
+            <div className="panel ai-advice">
+              <Bot size={27} />
+              <div><strong>MoneyMind AI · Análisis de tu presupuesto</strong>
+                {salaryRemaining >= 0 ? <p>Después de reservar {euro(monthlyBillsTotal)} para tus gastos mensuales, tu sobrante estimado es de {euro(salaryRemaining)}. Una idea prudente es priorizar un fondo para imprevistos, revisar tus objetivos de ahorro y dejar una cantidad para gastos personales. No hace falta destinar todo el sobrante a inversiones.</p> : <p>Tus gastos mensuales superan la nómina introducida en {euro(Math.abs(salaryRemaining))}. Revisa los importes, comprueba qué gastos son esenciales y considera dónde puedes ajustar el presupuesto. No registres pagos que no hayas realizado.</p>}
+                <small>Orientación educativa basada únicamente en los datos que has introducido; no es asesoramiento financiero personalizado.</small>
+              </div>
+            </div>
+          </>
+        )}
+      </main>
+
+      {showTransaction && (
+        <Modal title="Añadir movimiento" onClose={() => setShowTransaction(false)}>
+          <form onSubmit={addTransaction} className="modal-form">
+            <label>Tipo de movimiento</label>
+            <div className="type-switch">
+              <button type="button" className={form.type === "income" ? "selected income-selected" : ""} onClick={() => setForm({ ...form, type: "income", category: "Otros", billId: "" })}>
+                <TrendingUp size={16} /> Ingreso
+              </button>
+              <button type="button" className={form.type === "expense" ? "selected expense-selected" : ""} onClick={() => setForm({ ...form, type: "expense", category: "Comida", billId: "" })}>
+                <TrendingDown size={16} /> Gasto
+              </button>
+            </div>
+            <label>Concepto</label>
+            <input required placeholder="Ej. Mesada, compra..." value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            <label>Cantidad (€)</label>
+            <input required type="number" min="0.01" step="0.01" placeholder="0,00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
+            <label>Categoría</label>
+            <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value, billId: "" })}>
+              {(form.type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(c => <option key={c}>{c}</option>)}
+            </select>
+            {form.type === "expense" && form.category === "Gastos mensuales" && (
+              <>
+                <label>¿Cuál de tus gastos mensuales es?</label>
+                <select value={form.billId} onChange={e => selectMonthlyBill(e.target.value)}>
+                  <option value="">Otro gasto mensual (lo escribo yo)</option>
+                  {pendingBills.map(bill => <option key={bill.id} value={bill.id}>{bill.name} · {euro(bill.amount)}</option>)}
+                </select>
+                <p className="hint-text">
+                  {pendingBills.length
+                    ? "Si eliges uno de la lista, se rellena solo y se marcará como pagado en «Gastos mensuales»."
+                    : "No tienes gastos mensuales pendientes. Puedes añadirlos en el apartado «Gastos mensuales»."}
+                </p>
+              </>
+            )}
+            <button className="primary-button submit-button" type="submit">Guardar movimiento <ArrowUpRight size={17} /></button>
+          </form>
+        </Modal>
+      )}
+
+      {showSavePrompt && pendingIncome && (
+        <Modal title="¡Ingreso añadido!" onClose={() => { setShowSavePrompt(false); setPendingIncome(null); }}>
+          <div className="save-prompt">
+            <div className="success-icon"><CheckCircle2 size={30} /></div>
+            <h3>Has recibido {euro(pendingIncome.amount)}</h3>
+            <p>¿Quieres aprovechar este ingreso para poner una parte en tus ahorros?</p>
+
+            {goals.length ? (
+              <>
+                <label>Elige tu objetivo</label>
+                <select value={selectedGoal} onChange={e => setSelectedGoal(e.target.value)}>
+                  {goals.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+                <label>¿Cuánto quieres ahorrar? (€)</label>
+                <input type="number" min="0" max={pendingIncome.amount} step="0.01" placeholder="Ej. 10" value={saveAmount} onChange={e => setSaveAmount(e.target.value)} />
+                <p className="hint-text">Puedes ahorrar desde 0 € hasta {euro(pendingIncome.amount)}.</p>
+              </>
+            ) : (
+              <p className="hint-text">Todavía no tienes objetivos. Puedes crear uno en el apartado Ahorros.</p>
+            )}
+
+            <button className="primary-button submit-button" onClick={confirmSaving}>Confirmar</button>
+            <button className="skip-button" onClick={() => { setShowSavePrompt(false); setPendingIncome(null); }}>Ahora no, gracias</button>
+          </div>
+        </Modal>
+      )}
+
+      {showGoal && (
+        <Modal title="Crear objetivo de ahorro" onClose={() => setShowGoal(false)}>
+          <form className="modal-form" onSubmit={addGoal}>
+            <label>Nombre del objetivo</label>
+            <input required placeholder="Ej. Nuevo ordenador" value={goalForm.name} onChange={e => setGoalForm({ ...goalForm, name: e.target.value })} />
+            <label>¿Cuánto quieres conseguir? (€)</label>
+            <input required type="number" min="1" step="0.01" placeholder="500" value={goalForm.target} onChange={e => setGoalForm({ ...goalForm, target: e.target.value })} />
+            <button className="primary-button submit-button" type="submit">Crear objetivo <Target size={17} /></button>
+          </form>
+        </Modal>
+      )}
+
+      <AssistantChat context={aiContext} />
+    </div>
+  );
+}
+
+function StatCard({ icon: Icon, label, value, tone, note }) {
+  return (
+    <div className="panel stat-card">
+      <div className={`stat-icon ${tone}`}><Icon size={21} /></div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{note}</small>
+    </div>
+  );
+}
+
+function TransactionList({ transactions, onDelete }) {
+  if (!transactions.length) return <EmptyState text="Todavía no tienes movimientos registrados." />;
+
+  return (
+    <div className="transaction-list">
+      {transactions.map(t => (
+        <div className="transaction-row" key={t.id}>
+          <div className={`transaction-icon ${t.type}`}>
+            {t.type === "income" ? <ArrowDownRight size={19} /> : <ArrowUpRight size={19} />}
+          </div>
+          <div className="transaction-info">
+            <strong>{t.name}</strong>
+            <span>{t.category} · {new Date(t.date).toLocaleDateString("es-ES")}</span>
+          </div>
+          <strong className={t.type === "income" ? "amount-positive" : "amount-negative"}>
+            {t.type === "income" ? "+" : "-"}{euro(t.amount)}
+          </strong>
+          <button className="delete-button" title="Eliminar movimiento" onClick={() => onDelete(t.id)}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Modal({ title, children, onClose }) {
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div className="modal-card" onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-heading">
+          <h2>{title}</h2>
+          <button onClick={onClose}><X size={20} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ text }) {
+  return (
+    <div className="empty-state">
+      <PiggyBank size={30} />
+      <p>{text}</p>
+    </div>
+  );
+}
+
+const WELCOME_AI = "¡Hola! Soy tu asistente de IA. Puedo analizar tus gastos y ahorros, resolverte dudas de finanzas y ayudarte con cualquier otra pregunta. ¿Qué necesitas?";
+const WELCOME_LOCAL = "¡Hola! Ahora mismo estoy en **modo local**: puedo responder sobre tus datos de MoneyMind y conceptos básicos de finanzas, pero no conversar de cualquier tema. Para activar la IA completa, conecta el servidor (mira `.env.example`).";
+
+const SUGGESTIONS_AI = [
+  "¿Cómo voy este mes con mis gastos?",
+  "Hazme un plan para ahorrar 500 € en 6 meses",
+  "Explícame el interés compuesto con un ejemplo",
+  "¿Qué gastos podría recortar?"
+];
+
+const SUGGESTIONS_LOCAL = [
+  "¿Cuánto dinero me queda?",
+  "¿Qué gastos tengo pendientes?",
+  "¿En qué gasto más?",
+  "¿Cómo puedo ahorrar más?",
+  "¿Qué es un fondo indexado?"
+];
+
+// Respuestas sin IA externa: usan tus datos reales de la app y un pequeño glosario.
+function localAnswer(question, c) {
+  const t = question.toLowerCase();
+  const has = (...words) => words.some(word => t.includes(word));
+
+  const glossary = [
+    [["fondo de emergencia", "imprevistos"], "Un fondo de emergencia es un colchón de dinero fácil de recuperar para imprevistos (una avería, una factura inesperada…). Mucha gente se marca como referencia entre 3 y 6 meses de gastos básicos, pero lo importante es empezar por una cantidad pequeña y constante."],
+    [["interés compuesto", "interes compuesto"], "El interés compuesto significa que los intereses que ganas también generan intereses. Con el tiempo, el efecto crece: por eso empezar pronto y ser constante suele pesar más que aportar mucho de golpe."],
+    [["diversific"], "Diversificar es no poner todo el dinero en un único sitio (una empresa, un sector, un país). Así, si una parte va mal, el impacto total es menor. No elimina el riesgo, pero lo reparte."],
+    [["inflación", "inflacion"], "La inflación es la subida general de precios: con el tiempo, el mismo dinero compra menos. Por eso el dinero parado pierde poder adquisitivo y conviene tenerla presente al planificar a largo plazo."],
+    [["indexado", "etf"], "Un fondo indexado intenta copiar un índice (por ejemplo, de bolsas globales) en vez de elegir activos uno a uno. Suele tener comisiones bajas y mucha diversificación, pero sigue teniendo riesgo y puede perder valor. En MoneyMind solo es una simulación educativa."],
+    [["50/30/20"], "La regla 50/30/20 reparte tus ingresos netos así: 50 % necesidades (alquiler, comida, suministros), 30 % deseos (ocio) y 20 % ahorro o deudas. Es solo una guía; ajústala a tu situación."]
+  ];
+  const term = glossary.find(([keys]) => has(...keys));
+  if (term) return term[1];
+
+  if (has("nómina", "nomina", "sueldo", "salario", "sobrante")) {
+    if (!c.nomina) return "Aún no has indicado tu nómina. Introdúcela en el apartado «Nómina» y podré calcular tu sobrante mensual.";
+    return c.sobranteEstimado >= 0
+      ? `Tu nómina es de ${euro(c.nomina)} y tus gastos mensuales previstos suman ${euro(c.gastosMensualesPrevistos)}. Te sobran unos ${euro(c.sobranteEstimado)} al mes.`
+      : `Tu nómina es de ${euro(c.nomina)}, pero tus gastos mensuales previstos son ${euro(c.gastosMensualesPrevistos)}: te faltan ${euro(Math.abs(c.sobranteEstimado))}. Revisa qué gastos puedes ajustar.`;
+  }
+
+  if (has("pendiente", "por pagar", "recibo", "mensual")) {
+    const pending = c.gastosMensuales.filter(b => !b.pagado);
+    if (!c.gastosMensuales.length) return "Todavía no has añadido gastos mensuales. Puedes hacerlo en el apartado «Gastos mensuales».";
+    if (!pending.length) return `Tienes todos tus gastos mensuales pagados (${euro(c.gastosMensualesPagados)}). ¡Bien hecho!`;
+    return `Te quedan ${pending.length} gasto(s) mensual(es) por pagar, en total ${euro(c.gastosMensualesPendientes)}:\n` +
+      pending.map(b => `• ${b.concepto}: ${euro(b.importe)}`).join("\n");
+  }
+
+  if (has("cómo ahorrar", "como ahorrar", "ahorrar más", "ahorrar mas", "consejo", "reducir", "recortar", "mejorar")) {
+    const top = [...c.gastosPorCategoria].sort((a, b) => b.total - a.total)[0];
+    const lines = [
+      c.nomina ? `• Prueba a apartar un porcentaje fijo nada más cobrar; por ejemplo, un 10 % de tu nómina serían ${euro(c.nomina * 0.1)}.` : "• Aparta un porcentaje fijo nada más cobrar, aunque sea pequeño.",
+      top ? `• Tu categoría con más gasto es «${top.categoria}» (${euro(top.total)}): es el mejor sitio para buscar recortes.` : "• Registra tus gastos unas semanas para ver dónde se va el dinero.",
+      "• Separa necesidades de caprichos y ponle un tope mensual a los caprichos.",
+      "• Crea primero un fondo para imprevistos y luego sube tus otros objetivos."
+    ];
+    return "Algunas ideas educativas para ahorrar más:\n" + lines.join("\n");
+  }
+
+  if (has("objetivo", "meta", "ahorr")) {
+    if (!c.objetivos.length) return "Todavía no tienes objetivos de ahorro. Crea el primero en el apartado «Ahorros».";
+    return `Llevas ${euro(c.ahorrado)} ahorrados en total:\n` +
+      c.objetivos.map(o => `• ${o.nombre}: ${euro(o.ahorrado)} de ${euro(o.meta)} (${Math.min(100, Math.round(o.ahorrado / o.meta * 100))} %)`).join("\n");
+  }
+
+  if (has("invert", "inversión", "inversion", "fondo", "bolsa")) {
+    return "Sobre inversión, ten en cuenta: la rentabilidad no está garantizada y puedes perder dinero; diversificar reparte el riesgo; las comisiones afectan al resultado; y conviene tener antes un fondo de emergencia. En MoneyMind las aportaciones son solo una simulación educativa, así que es un buen sitio para practicar sin riesgo.";
+  }
+
+  if (has("gasto", "gasto más", "gastando", "gastar")) {
+    if (!c.gastosPorCategoria.length) return "Todavía no tienes gastos registrados. Añade alguno con «Añadir movimiento».";
+    const sorted = [...c.gastosPorCategoria].sort((a, b) => b.total - a.total);
+    return `Has gastado ${euro(c.gastos)} en total. Por categorías:\n` +
+      sorted.map(x => `• ${x.categoria}: ${euro(x.total)}`).join("\n");
+  }
+
+  if (has("disponible", "queda", "tengo", "saldo", "balance", "dinero")) {
+    return `Ahora mismo tienes ${euro(c.disponible)} disponibles (ingresos ${euro(c.ingresos)} − gastos ${euro(c.gastos)} − ahorros ${euro(c.ahorrado)}${c.invertidoSimulado ? ` − inversión simulada ${euro(c.invertidoSimulado)}` : ""}).`;
+  }
+
+  if (has("cómo funciona", "como funciona", "ayuda", "qué puedes", "que puedes", "app")) {
+    return "Puedo ayudarte con:\n• Tu dinero disponible, gastos y ahorros\n• Tus gastos mensuales pendientes y tu nómina\n• Ideas para ahorrar\n• Conceptos como fondo de emergencia, diversificación, inflación o interés compuesto";
+  }
+
+  return "No estoy seguro de haber entendido. Puedo hablarte de tu dinero disponible, tus gastos, tus ahorros, tus gastos mensuales, tu nómina o conceptos básicos de finanzas. ¿Quieres probar con alguna de las sugerencias?";
+}
+
+// Convierte el texto de la IA (Markdown ligero) en elementos de React, sin HTML inseguro.
+function renderInline(text) {
+  return text.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/g).map((part, i) => {
+    if (part.length > 4 && part.startsWith("**") && part.endsWith("**")) return <strong key={i}>{part.slice(2, -2)}</strong>;
+    if (part.length > 2 && part.startsWith("`") && part.endsWith("`")) return <code key={i}>{part.slice(1, -1)}</code>;
+    return part;
+  });
+}
+
+function RichText({ text }) {
+  const lines = text.split("\n");
+  const bullet = /^\s*[-*•]\s+/;
+  const numbered = /^\s*\d+[.)]\s+/;
+  const heading = /^#{1,4}\s+/;
+  const blocks = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim().startsWith("```")) {
+      const code = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith("```")) { code.push(lines[i]); i++; }
+      i++;
+      blocks.push({ type: "code", text: code.join("\n") });
+    } else if (bullet.test(line)) {
+      const items = [];
+      while (i < lines.length && bullet.test(lines[i])) { items.push(lines[i].replace(bullet, "")); i++; }
+      blocks.push({ type: "ul", items });
+    } else if (numbered.test(line)) {
+      const items = [];
+      while (i < lines.length && numbered.test(lines[i])) { items.push(lines[i].replace(numbered, "")); i++; }
+      blocks.push({ type: "ol", items });
+    } else if (heading.test(line)) {
+      blocks.push({ type: "h", text: line.replace(heading, "") });
+      i++;
+    } else if (!line.trim()) {
+      i++;
+    } else {
+      const para = [];
+      while (
+        i < lines.length && lines[i].trim() && !bullet.test(lines[i]) && !numbered.test(lines[i]) &&
+        !heading.test(lines[i]) && !lines[i].trim().startsWith("```")
+      ) { para.push(lines[i]); i++; }
+      blocks.push({ type: "p", text: para.join("\n") });
+    }
+  }
+
+  return blocks.map((block, k) => {
+    if (block.type === "code") return <pre key={k}><code>{block.text}</code></pre>;
+    if (block.type === "ul") return <ul key={k}>{block.items.map((item, j) => <li key={j}>{renderInline(item)}</li>)}</ul>;
+    if (block.type === "ol") return <ol key={k}>{block.items.map((item, j) => <li key={j}>{renderInline(item)}</li>)}</ol>;
+    if (block.type === "h") return <h4 key={k}>{renderInline(block.text)}</h4>;
+    return <p key={k}>{renderInline(block.text)}</p>;
+  });
+}
+
+function AssistantChat({ context }) {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState(() => readStorage("mm_chat", []));
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const listRef = useRef(null);
+  const abortRef = useRef(null);
+  const runRef = useRef(0);
+
+  // Guardamos la conversación para que no se pierda al recargar
+  useEffect(() => {
+    const toSave = messages.filter(m => !m.pending && m.content.trim()).slice(-40);
+    try { localStorage.setItem("mm_chat", JSON.stringify(toSave)); } catch { /* sin espacio */ }
+  }, [messages]);
+
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+  }, [messages, open]);
+
+  const resetChat = () => {
+    runRef.current += 1;
+    abortRef.current?.abort();
+    setMessages([]);
+    setLoading(false);
+  };
+
+  const stop = () => abortRef.current?.abort();
+
+  const send = async text => {
+    const question = text.trim();
+    if (!question || loading) return;
+
+    const run = ++runRef.current;
+    const next = [...messages.filter(m => !m.pending), { role: "user", content: question }];
+    setMessages([...next, { role: "assistant", content: "", pending: true }]);
+    setInput("");
+    setLoading(true);
+
+    const setLast = (content, pending = false) => {
+      if (runRef.current !== run) return;
+      setMessages(prev => {
+        const copy = prev.slice();
+        copy[copy.length - 1] = { role: "assistant", content, ...(pending ? { pending: true } : {}) };
+        return copy;
+      });
+    };
+
+    let answer = "";
+
+    if (AI_ENDPOINT) {
+      const controller = new AbortController();
+      abortRef.current = controller;
+      try {
+        // Enviamos el historial completo (hasta 20 mensajes) para que la IA recuerde la conversación
+        const history = next.filter(m => m.content.trim()).slice(-20).map(({ role, content }) => ({ role, content }));
+        while (history.length && history[0].role !== "user") history.shift();
+
+        const res = await fetch(AI_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: history, context }),
+          signal: controller.signal
+        });
+        if (!res.ok || !res.body) throw new Error("Respuesta no válida");
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split("\n\n");
+          buffer = events.pop();
+
+          for (const event of events) {
+            const line = event.split("\n").find(l => l.startsWith("data: "));
+            if (!line) continue;
+            const payload = line.slice(6);
+            if (payload === "[DONE]") continue;
+            const data = JSON.parse(payload);
+            if (data.error) throw new Error(data.error);
+            if (data.text) {
+              answer += data.text;
+              setLast(answer, true);
+            }
+          }
+        }
+        if (!answer.trim()) throw new Error("Respuesta vacía");
+      } catch (error) {
+        if (error.name === "AbortError") {
+          answer = answer.trim() ? answer : "(Respuesta detenida)";
+        } else if (answer.trim()) {
+          answer += "\n\n(La conexión se cortó antes de terminar la respuesta.)";
+        } else {
+          answer = localAnswer(question, context) +
+            "\n\n(No he podido conectar con la IA. ¿Está arrancado `server.js`? Te he respondido en modo local.)";
+        }
+      }
+    } else {
+      answer = localAnswer(question, context);
+    }
+
+    setLast(answer);
+    if (runRef.current === run) setLoading(false);
+  };
+
+  const suggestions = AI_ENDPOINT ? SUGGESTIONS_AI : SUGGESTIONS_LOCAL;
+
+  return (
+    <>
+      {open && (
+        <div className="chat-panel" role="dialog" aria-label="Asistente MoneyMind AI">
+          <div className="chat-header">
+            <div className="chat-header-icon"><Bot size={20} /></div>
+            <div>
+              <strong>Asistente MoneyMind</strong>
+              <span>{AI_ENDPOINT ? "IA conectada" : "Modo local"}</span>
+            </div>
+            <div className="chat-header-actions">
+              <button type="button" onClick={resetChat} aria-label="Nueva conversación" title="Nueva conversación">
+                <RotateCcw size={16} />
+              </button>
+              <button type="button" onClick={() => setOpen(false)} aria-label="Cerrar chat">
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+
+          <div className="chat-messages" ref={listRef}>
+            <div className="chat-bubble assistant">
+              <RichText text={AI_ENDPOINT ? WELCOME_AI : WELCOME_LOCAL} />
+            </div>
+            {messages.map((m, i) => (
+              <div key={i} className={`chat-bubble ${m.role}`}>
+                {m.role === "user"
+                  ? m.content
+                  : m.content
+                    ? <RichText text={m.content} />
+                    : <span className="chat-typing"><i /><i /><i /></span>}
+              </div>
+            ))}
+          </div>
+
+          {messages.length === 0 && (
+            <div className="chat-chips">
+              {suggestions.map(s => (
+                <button type="button" key={s} onClick={() => send(s)}>{s}</button>
+              ))}
+            </div>
+          )}
+
+          <form className="chat-form" onSubmit={e => { e.preventDefault(); send(input); }}>
+            <textarea
+              value={input}
+              rows={Math.min(4, input.split("\n").length)}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  send(input);
+                }
+              }}
+              placeholder="Escribe tu pregunta… (Intro para enviar)"
+              maxLength={2000}
+            />
+            {loading ? (
+              <button type="button" className="chat-stop" onClick={stop} aria-label="Detener respuesta" title="Detener">
+                <Square size={15} />
+              </button>
+            ) : (
+              <button type="submit" disabled={!input.trim()} aria-label="Enviar">
+                <Send size={17} />
+              </button>
+            )}
+          </form>
+          <small className="chat-disclaimer">
+            {AI_ENDPOINT ? "La IA puede equivocarse. " : ""}Orientación educativa; no es asesoramiento financiero.
+          </small>
+        </div>
+      )}
+
+      <button
+        type="button"
+        className="chat-fab"
+        onClick={() => setOpen(o => !o)}
+        aria-label={open ? "Cerrar asistente" : "Abrir asistente"}
+      >
+        {open ? <X size={22} /> : <MessageCircle size={22} />}
+      </button>
+    </>
+  );
+}
+
+export default App;
